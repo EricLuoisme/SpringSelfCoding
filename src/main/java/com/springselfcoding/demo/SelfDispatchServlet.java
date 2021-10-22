@@ -2,6 +2,7 @@ package com.springselfcoding.demo;
 
 import com.springselfcoding.mvcframework.SelfAutowired;
 import com.springselfcoding.mvcframework.SelfController;
+import com.springselfcoding.mvcframework.SelfRequestMapping;
 import com.springselfcoding.mvcframework.SelfService;
 
 import javax.servlet.ServletConfig;
@@ -13,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.*;
 
@@ -27,6 +29,9 @@ public class SelfDispatchServlet extends HttpServlet {
     // 存放实例
     private Map<String, Object> ioc = new HashMap<>();
 
+    // 存放Url和Controller的处理方法, 进行绑定
+    private Map<String, Method> handlerMapper = new HashMap<>();
+
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -36,7 +41,13 @@ public class SelfDispatchServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         // 6. 根据URL委派给具体调用方法
-        doDispatch();
+        try {
+            doDispatch(req, resp);
+        } catch (Exception e) {
+            e.printStackTrace();
+            resp.getWriter().write("500 Error");
+        }
+
     }
 
     @Override
@@ -64,9 +75,7 @@ public class SelfDispatchServlet extends HttpServlet {
 
     }
 
-    /**
-     * 根据ContextConfigLocation这个名称, 去ClassPath下找到对应的配置文件
-     */
+    // 根据ContextConfigLocation这个名称, 去ClassPath下找到对应的配置文件
     private void doLoadConfig(String contextConfigLocation) {
         InputStream resourceAsStream = this.getClass().getClassLoader().getResourceAsStream(contextConfigLocation);
         try {
@@ -84,9 +93,7 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-    /**
-     * 扫描包路径下找所有文件
-     */
+    // 扫描包路径下找所有文件
     private void doScanner(String scanPackage) {
         // 将包路径替换为文件夹路径
         URL resource = this.getClass().getClassLoader()
@@ -107,6 +114,7 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
+    // 通过反射实例化Bean, 并且放入Ioc容器(Map)中
     private void doInstance() {
         if (!classNames.isEmpty()) {
             try {
@@ -148,25 +156,25 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-
+    // 进行依赖注入
     private void doAutowired() {
         if (!ioc.isEmpty()) {
             // 对所有Bean都进行遍历
             for (Map.Entry<String, Object> entry : ioc.entrySet()) {
                 // 遍历获取其中需要Autowired的属性
-                for (Field declaredField : entry.getValue().getClass().getDeclaredFields()) {
-                    if (declaredField.isAnnotationPresent(SelfAutowired.class)) {
-                        SelfAutowired autowired = declaredField.getAnnotation(SelfAutowired.class);
+                for (Field field : entry.getValue().getClass().getDeclaredFields()) {
+                    if (field.isAnnotationPresent(SelfAutowired.class)) {
+                        SelfAutowired autowired = field.getAnnotation(SelfAutowired.class);
                         // 找别名, 没有别名就用类型作为名称
                         String beanName = autowired.value().trim();
                         if ("".equals(beanName)) {
-                            beanName = declaredField.getType().getName();
+                            beanName = field.getType().getName();
                         }
                         // 属性赋值前, 暴力访问
-                        declaredField.setAccessible(true);
+                        field.setAccessible(true);
                         try {
                             // 到ioc找到注册的bean进行赋值 (哪个对象, 赋什么值)
-                            declaredField.set(entry.getValue(), ioc.get(beanName));
+                            field.set(entry.getValue(), ioc.get(beanName));
                         } catch (IllegalAccessException e) {
                             e.printStackTrace();
                         }
@@ -176,21 +184,57 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
+    // 建立Url和Method的关联
     private void doInitHandlerMapping() {
         if (!ioc.isEmpty()) {
             for (Map.Entry<String, Object> entry : ioc.entrySet()) {
-                entry.getValue().getClass();
+                Class<?> clazz = entry.getValue().getClass();
+                // 只对Controller进行处理
+                if (clazz.isAnnotationPresent(SelfController.class)) {
+
+                    String baseUrl = "";
+                    // 判断Clazz有没有加RequestMapping
+                    if (clazz.isAnnotationPresent(SelfRequestMapping.class)) {
+                        SelfRequestMapping baseRequestMapping = clazz.getAnnotation(SelfRequestMapping.class);
+                        baseUrl = baseRequestMapping.value();
+                    }
+
+
+                    // 仅迭代Public的方法
+                    for (Method method : clazz.getDeclaredMethods()) {
+                        if (method.isAnnotationPresent(SelfRequestMapping.class)) {
+                            SelfRequestMapping requestMapping = method.getAnnotation(SelfRequestMapping.class);
+                            String url = (baseUrl + requestMapping.value());
+
+                            handlerMapper.put(url, method);
+                            System.out.println("Mapped: " + url + " ---> " + method);
+                        }
+                    }
+                }
             }
         }
     }
 
-    private void doDispatch() {
+    // 找到对应HandlerMapping并调用处理
+    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+        String url = req.getRequestURI();
+        String contextPath = req.getContextPath();
 
+        if (!this.handlerMapper.containsKey(url)) {
+            // 不存在页面
+            resp.getWriter().write("404 Not Found");
+            return;
+        }
+
+        Method method = this.handlerMapper.get(url);
+        Map<String, String[]> parameterMap = req.getParameterMap();
+
+        // 这里就是任务只使用默认名称, 通过这个方式获取beanName
+        String beanName = toLowerFirstCase(method.getDeclaringClass().getSimpleName());
+        method.invoke(ioc.get(beanName), new Object[]{req, resp, parameterMap.get("name")[0]});
     }
 
-    /**
-     * 只转首字母为小写
-     */
+    // 只转首字母为小写
     private String toLowerFirstCase(String simpleName) {
         char[] chars = simpleName.toCharArray();
         chars[0] += 32;
