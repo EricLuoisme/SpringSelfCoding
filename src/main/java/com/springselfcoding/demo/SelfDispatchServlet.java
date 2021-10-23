@@ -1,5 +1,6 @@
 package com.springselfcoding.demo;
 
+import com.springselfcoding.ioc.context.SelfApplicationContext;
 import com.springselfcoding.mvcframework.SelfAutowired;
 import com.springselfcoding.mvcframework.SelfController;
 import com.springselfcoding.mvcframework.SelfRequestMapping;
@@ -31,6 +32,9 @@ public class SelfDispatchServlet extends HttpServlet {
 
     // 存放Url和Controller的处理方法, 进行绑定
     private Map<String, Method> handlerMapper = new HashMap<>();
+
+    // 声明ApplicationContext, IoC容器的访问上下文
+    private SelfApplicationContext applicationContext = null;
 
 
     @Override
@@ -67,6 +71,8 @@ public class SelfDispatchServlet extends HttpServlet {
         // 4. 完成依赖注入
         doAutowired();
 
+        applicationContext = new SelfApplicationContext(config.getInitParameter("contextConfigLocation"));
+
         // ------------- MVC ------------------
         // 5. 初始化HandlerMapping (url和method建立关系)
         doInitHandlerMapping();
@@ -75,9 +81,11 @@ public class SelfDispatchServlet extends HttpServlet {
 
     }
 
-    // 根据ContextConfigLocation这个名称, 去ClassPath下找到对应的配置文件
+    /**
+     * 根据ContextConfigLocation这个名称, 去ClassPath下找到对应的配置文件
+     */
     private void doLoadConfig(String contextConfigLocation) {
-        InputStream resourceAsStream = this.getClass().getClassLoader().getResourceAsStream(contextConfigLocation);
+        InputStream resourceAsStream = this.getClass().getClassLoader().getResourceAsStream(contextConfigLocation.replaceAll("classpath:", ""));
         try {
             contextConfig.load(resourceAsStream);
         } catch (IOException e) {
@@ -93,7 +101,9 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-    // 扫描包路径下找所有文件
+    /**
+     * 扫描包路径下找所有文件
+     */
     private void doScanner(String scanPackage) {
         // 将包路径替换为文件夹路径
         URL resource = this.getClass().getClassLoader()
@@ -114,7 +124,9 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-    // 通过反射实例化Bean, 并且放入Ioc容器(Map)中
+    /**
+     * 通过反射实例化Bean, 并且放入Ioc容器(Map)中
+     */
     private void doInstance() {
         if (!classNames.isEmpty()) {
             try {
@@ -156,7 +168,9 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-    // 进行依赖注入
+    /**
+     * 进行依赖注入
+     */
     private void doAutowired() {
         if (!ioc.isEmpty()) {
             // 对所有Bean都进行遍历
@@ -177,6 +191,7 @@ public class SelfDispatchServlet extends HttpServlet {
                             field.set(entry.getValue(), ioc.get(beanName));
                         } catch (IllegalAccessException e) {
                             e.printStackTrace();
+                            continue;
                         }
                     }
                 }
@@ -184,7 +199,9 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-    // 建立Url和Method的关联
+    /**
+     * 建立Url和Method的关联
+     */
     private void doInitHandlerMapping() {
         if (!ioc.isEmpty()) {
             for (Map.Entry<String, Object> entry : ioc.entrySet()) {
@@ -215,7 +232,9 @@ public class SelfDispatchServlet extends HttpServlet {
         }
     }
 
-    // 找到对应HandlerMapping并调用处理
+    /**
+     * 找到对应HandlerMapping并调用处理
+     */
     private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws Exception {
         String url = req.getRequestURI();
         String contextPath = req.getContextPath();
@@ -234,7 +253,9 @@ public class SelfDispatchServlet extends HttpServlet {
         method.invoke(ioc.get(beanName), new Object[]{req, resp, parameterMap.get("name")[0]});
     }
 
-    // 只转首字母为小写
+    /**
+     * 只转首字母为小写
+     */
     private String toLowerFirstCase(String simpleName) {
         char[] chars = simpleName.toCharArray();
         chars[0] += 32;
