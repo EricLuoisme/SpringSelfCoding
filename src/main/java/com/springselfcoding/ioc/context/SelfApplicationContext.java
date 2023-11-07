@@ -16,6 +16,7 @@ import java.util.Map;
 
 /**
  * 这里为了方便直接写成实体类, Spring中这里还是abstract的
+ * 主要对Bean进行读, 配置, 并缓存所有等待实例化的Bean的信息
  */
 public class SelfApplicationContext implements SelfBeanFactory {
 
@@ -67,7 +68,8 @@ public class SelfApplicationContext implements SelfBeanFactory {
 
     @Override
     public Object getBean(String beanName) {
-       return registry.getBean(beanName);
+        // 这里是进行实例化+依赖注入
+        return registry.getBean(beanName);
     }
 
     private void doLoadInstance() {

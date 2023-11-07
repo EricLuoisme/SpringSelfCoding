@@ -1,6 +1,5 @@
 package com.springselfcoding.ioc.beans.support;
 
-
 import com.springselfcoding.ioc.beans.config.SelfBeanDefinition;
 
 import java.io.File;
@@ -11,6 +10,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+/**
+ * 1) 扫描配置信息
+ * 2) 扫描路径下的bean信息, 将其存入map(registry)中
+ * 3) 后面loadBeanDefinitions()会调用内容, 将map中的bean信息, 封装为BeanDefinition
+ */
 public class SelfBeanDefinitionReader {
 
     // 加载配置

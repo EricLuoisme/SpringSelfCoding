@@ -12,6 +12,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 扫描完Bean并都Wrapped为BeanDefinition后, 使用Factory进行Bean的实例化
+ * 1) 三级缓存, 第一级就是beanDefinitionMap
+ * 2) 第二级缓存, 通过反射实例化bean之后(Singleton), 会将其存入factoryBeanObjCache, 后面可能会需要AOP
+ * 3) 实例化后的bean, 通过wrapper为统一好管理的实例, 通过反射找到需要依赖注入的属性(或者是constructor的), 会从factoryBeanInstanceCache中找
+ * 4) 实例化并依赖注入完毕后, 放入factoryBeanInstanceCache
+ */
 public class SelfDefaultListableBeanFactory implements SelfBeanFactory {
 
     // 保存所有bean的配置信息
